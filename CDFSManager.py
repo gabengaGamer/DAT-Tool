@@ -175,29 +175,65 @@ def process_file_task(idx, file_info, output_file, sector_size, first_sector_off
 
 #==============================================================================
 
-def pack_cdfs(input_dir, output_file, sector_size=2048, cache_size=128*1024, max_workers=None, debug_mode=False):      
-   
-    file_table = []
-    file_paths = []
-    
-    for root, dirs, files in os.walk(input_dir):
-        for file in files:
-            file_path = os.path.join(root, file)
-            rel_path = os.path.relpath(file_path, input_dir)
-            file_size = os.path.getsize(file_path)
+def read_files_from_list(file_list_path):  
+    file_paths = []   
+    try:
+        with open(file_list_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    file_paths.append(line)
+        
+        return file_paths
+    except Exception as e:
+        print(f"Error reading file list: {e}")
+        return None
+
+#==============================================================================
+
+def pack_cdfs(input_path, output_file, sector_size=2048, cache_size=128*1024, max_workers=None, debug_mode=False, pack_using_file_list=False):    
+    file_paths = []    
+    if pack_using_file_list:
+        raw_file_paths = read_files_from_list(input_path)
+        if not raw_file_paths:
+            return False
             
-            file_paths.append({
-                'path': file_path,
-                'rel_path': rel_path,
-                'size': file_size
-            })
+        for file_path in raw_file_paths:
+            if os.path.exists(file_path):
+                dir_path, file_name = os.path.split(file_path)
+                file_size = os.path.getsize(file_path)
+                
+                file_paths.append({
+                    'path': file_path,
+                    'rel_path': file_path,
+                    'size': file_size
+                })
+            else:
+                print(f"Warning: File {file_path} not found.")
+    else:
+        for root, dirs, files in os.walk(input_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                rel_path = os.path.relpath(file_path, input_path)
+                file_size = os.path.getsize(file_path)
+                
+                file_paths.append({
+                    'path': file_path,
+                    'rel_path': rel_path,
+                    'size': file_size
+                })
     
     print(f"Found {len(file_paths)} files for packing")
+    
+    if not file_paths:
+        print("No files for packing. Canceling operation.")
+        return False
     
     string_table = bytearray(b'\0')
     string_table_entries = 1
     string_cache = {}
     
+    file_table = []  
     for file_info in file_paths:
         rel_path = file_info['rel_path'].replace('/', '\\')
         dir_name, file_name = os.path.split(rel_path)
@@ -299,7 +335,7 @@ def pack_cdfs(input_dir, output_file, sector_size=2048, cache_size=128*1024, max
 
 #==============================================================================
 
-def list_cdfs(input_file):
+def list_cdfs(input_file, output_file=None, write_list_to_txt=False):
     with open(input_file, 'rb') as f:
         header_data = f.read(40)
         magic, version, sector_size, recommended_cache_size, first_sector_offset, \
@@ -309,15 +345,13 @@ def list_cdfs(input_file):
         if magic != CDFS_MAGIC:
             print(f"Error: Invalid file format. Magic number: {hex(magic)}")
             return False
-            
-        print(f"CDFS Version: {version}")
-        print(f"File Count: {file_table_entries}")
-        print(f"Sector Size: {sector_size} bytes")
-        print(f"Total Archive Size: {os.path.getsize(input_file)} bytes")
-        print(f"Total Sectors: {total_sectors}")
-        print("\nContents:")
-        print(f"{'Index':<6} {'Size':<12} {'Path'}")
-        print("-" * 80)
+        
+        output_lines = []
+        output_lines.append(f"{'Index':<6} {'Size':<12} {'Path'}")
+        output_lines.append("-" * 80)
+        
+        for line in output_lines:
+            print(line)
         
         file_table = []
         for i in range(file_table_entries):
@@ -332,6 +366,9 @@ def list_cdfs(input_file):
         
         string_table_data = f.read(string_table_length)
         
+        file_lines = []
+        file_paths = []
+        
         for idx, entry in enumerate(file_table):
             file_name = unpack_string_from_table(string_table_data, entry['file_name_offset'])
             dir_name = unpack_string_from_table(string_table_data, entry['dir_name_offset'])
@@ -340,8 +377,21 @@ def list_cdfs(input_file):
                 full_path = f"{dir_name}\\{file_name}"
             else:
                 full_path = file_name
-                
-            print(f"{idx:<6} {entry['length']:<12} {full_path}")
+            
+            line = f"{idx:<6} {entry['length']:<12} {full_path}"
+            file_lines.append(line)
+            file_paths.append(full_path)
+            print(line)
+        
+        if write_list_to_txt:
+            if not output_file:
+                base_name = os.path.splitext(os.path.basename(input_file))[0]
+                output_file = f"{base_name}_filelist.txt"
+           
+            with open(output_file, 'w') as out_f:
+                for path in file_paths:
+                    out_f.write(path + "\n")
+            print(f"\nFile paths saved to {output_file}")
     
     return True
 
@@ -445,7 +495,7 @@ def print_help():
     print("  unpack <input_file> <output_dir> [--debug]")
     print("      unpacks files from the specified CDFS archive to the given directory.")
     print("")
-    print("  list <input_file>")
+    print("  list <input_file> [--write-list list.txt]")
     print("      Lists the contents of the specified CDFS archive.")
     print("")
     print("  verify <input_file>")
@@ -456,28 +506,33 @@ def print_help():
     print("")
     print("Examples:")
     print("  CDFSManager pack my_folder output.dat")
+    print("  CDFSManager pack file_list.txt output.dat")
     print("  CDFSManager unpack archive.dat my_folder")
     print("  CDFSManager list archive.dat")
+    print("  CDFSManager list archive.dat --write-list list.txt")
     print("  CDFSManager verify archive.dat")
 
 #==============================================================================
 
 def print_command_help(command):
     if command == "pack":
-        print("Usage: CDFSManager pack <input_dir> <output_file> [options]")
+        print("Usage: CDFSManager pack <input_dir|file_list.txt> <output_file> [options]")
         print("")
         print("Creates a CDFS archive from the specified directory.")
         print("")
         print("Arguments:")
         print("  input_dir          Source directory containing files to pack")
+        print("  file_list.txt      Text file with list of files to pack")
         print("  output_file        Destination .dat file to create")
         print("")
         print("Options:")
         print("  --sector-size SIZE    Sets the sector size in bytes (default: 2048)")
         print("  --cache-size SIZE     Sets the recommended cache size in bytes (default: 131072)")
+        print("  --file-list           Explicitly specify that input is a file list")
         print("  --debug               Display detailed information")
         print("")
         print("Example:")
+        print("  CDFSManager pack file_list.txt output.dat")
         print("  CDFSManager pack my_folder output.dat")
     
     elif command == "unpack":
@@ -496,15 +551,19 @@ def print_command_help(command):
         print("  CDFSManager unpack archive.dat my_folder")
     
     elif command == "list":
-        print("Usage: CDFSManager list <input_file>")
+        print("Usage: CDFSManager list <input_file> [options]")
         print("")
         print("Lists the contents of the specified CDFS archive.")
         print("")
         print("Arguments:")
         print("  input_file         .dat file to list contents of")
         print("")
+        print("Options:")
+        print("  --write-list       Write .txt file list")
+        print("")
         print("Example:")
         print("  CDFSManager list archive.dat")
+        print("  CDFSManager list archive.dat --write-list list.txt")
     
     elif command == "verify":
         print("Usage: CDFSManager verify <input_file>")
@@ -541,14 +600,20 @@ def main():
             print_command_help("pack")
             return
             
-        input_dir = sys.argv[2]
+        input_path = sys.argv[2]
         output_file = sys.argv[3]
         sector_size = 2048
         cache_size = 128*1024
-        dbg = False
+        debug_mode = False
+        pack_using_file_list = False
         
-        if not os.path.isdir(input_dir):
-            print(f"Error: Directory {input_dir} doesn't exist")
+        if input_path.lower().endswith('.txt'):
+            if not os.path.isfile(input_path):
+                print(f"Error: File {input_path} doesn't exist")
+                return False
+            pack_using_file_list = True
+        elif not os.path.isdir(input_path) and not pack_using_file_list:
+            print(f"Error: Directory {input_path} doesn't exist")
             return False 
         
         i = 4
@@ -559,16 +624,19 @@ def main():
             elif sys.argv[i] == "--cache-size" and i+1 < len(sys.argv):
                 cache_size = int(sys.argv[i+1])
                 i += 2
+            elif sys.argv[i] == "--file-list":
+                pack_using_file_list = True
+                i += 1
             elif sys.argv[i] == "--debug":  
-                dbg = True 
+                debug_mode = True 
                 i += 1                
             else:
                 print(f"Unknown option: {sys.argv[i]}")
                 return                            
         
         start_time = time.time()
-        pack_cdfs(input_dir, output_file, sector_size, cache_size, debug_mode=dbg)
-        if dbg:
+        pack_cdfs(input_path, output_file, sector_size, cache_size, debug_mode=debug_mode, pack_using_file_list=pack_using_file_list)
+        if debug_mode:
             print(f"Time taken: {time.time() - start_time:.2f} seconds")
     
     elif command == "unpack":
@@ -578,7 +646,7 @@ def main():
             
         input_file = sys.argv[2]
         output_dir = sys.argv[3]       
-        dbg = False     
+        debug_mode = False     
         
         if not os.path.isfile(input_file):
             print(f"Error: File {input_file} doesn't exist")
@@ -590,15 +658,15 @@ def main():
         i = 4
         while i < len(sys.argv):
             if sys.argv[i] == "--debug":  
-                dbg = True 
+                debug_mode = True 
                 i += 1                
             else:
                 print(f"Unknown option: {sys.argv[i]}")
                 return
         
         start_time = time.time()
-        unpack_cdfs(input_file, output_dir, debug_mode=dbg)
-        if dbg:
+        unpack_cdfs(input_file, output_dir, debug_mode=debug_mode)
+        if debug_mode:
             print(f"Time taken: {time.time() - start_time:.2f} seconds")
     
     elif command == "list":
@@ -612,7 +680,23 @@ def main():
             print(f"Error: File {input_file} doesn't exist")
             return
         
-        list_cdfs(input_file)
+        output_file = None
+        write_list_to_txt = False
+        
+        i = 3
+        while i < len(sys.argv):
+            if sys.argv[i] == "--write-list":
+                write_list_to_txt = True
+                if i+1 < len(sys.argv) and not sys.argv[i+1].startswith("--"):
+                    output_file = sys.argv[i+1]
+                    i += 2
+                else:
+                    i += 1
+            else:
+                print(f"Unknown option: {sys.argv[i]}")
+                return
+        
+        list_cdfs(input_file, output_file, write_list_to_txt=write_list_to_txt )
     
     elif command == "verify":
         if len(sys.argv) < 3:
