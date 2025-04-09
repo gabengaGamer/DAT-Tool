@@ -1,6 +1,15 @@
 ## Entropy-DAT-Tool
 
-Made specifically for [Tribes: Aerial Assault](https://en.wikipedia.org/wiki/Tribes:_Aerial_Assault)
+DAT Tool is a command-line interface (CLI) utility for working with [Tribes: Aerial Assault](https://en.wikipedia.org/wiki/Tribes:_Aerial_Assault) DAT archive format. The DAT format is used to store game assets.
+
+This Python implementation is based on the original C++ implementation by Inevitable Entertainment Inc.
+
+## Features
+
+- List the contents of a DAT archive
+- Extract files from a DAT archive
+- Create a new DAT archive from a directory of files
+- Verify the integrity of a DAT archive
 
 ## Join our Discord
 
