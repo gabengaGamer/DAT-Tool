@@ -11,15 +11,17 @@ Made specifically for [Tribes: Aerial Assault](https://en.wikipedia.org/wiki/Tri
 Usage: CDFSManager <command> [options]
 
 Commands:
-  pack <input_dir> <output_file> [--sector-size SIZE] [--cache-size SIZE] [--debug]   Creates a CDFS archive from the specified directory.
-  unpack <input_file> <output_dir> [--debug]                                          Unpacks files from the specified CDFS archive to the given directory.
-  list <input_file>                                                                   Lists the contents of the specified CDFS archive.
-  verify <input_file>                                                                 Verifies the integrity of the specified CDFS archive.
-  help                                                                                Displays this help text.
+  pack <input_dir|file_list.txt> <output_file> [--sector-size SIZE] [--cache-size SIZE] [--debug]   Creates a CDFS archive from the specified directory.
+  unpack <input_file> <output_dir> [--debug]                                                        Unpacks files from the specified CDFS archive to the given directory.
+  list <input_file> [--write-list list.txt]                                                         Lists the contents of the specified CDFS archive.
+  verify <input_file>                                                                               Verifies the integrity of the specified CDFS archive.
+  help                                                                                              Displays this help text.
 
 Examples:
   CDFSManager pack my_folder output.dat
+  CDFSManager pack file_list.txt output.dat
   CDFSManager unpack archive.dat my_folder
   CDFSManager list archive.dat
+  CDFSManager list archive.dat --write-list list.txt
   CDFSManager verify archive.dat
 ```
