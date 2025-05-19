@@ -484,7 +484,7 @@ def verify_cdfs(input_file):
 
 def print_help():
     print("")
-    print("CDFS Manager (c)2001 Inevitable Entertainment Inc.")
+    print("CDFS Manager (c)2025 Intervelop.")
     print("")
     print("Usage: CDFSManager <command> [options]")
     print("")
